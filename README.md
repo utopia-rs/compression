@@ -1,8 +1,5 @@
 # Utopia Compression
 
-> [!IMPORTANT]
-> This repository is a read-only mirror of [`crates/utopia/compression`](https://github.com/appwrite/appwrite/tree/main/crates/utopia/compression) in [appwrite/appwrite](https://github.com/appwrite/appwrite). Development happens there — please open issues and pull requests against appwrite/appwrite.
-
 [![Discord](https://img.shields.io/discord/564160730845151244?label=discord)](https://discord.gg/GSeTUeA)
 
 Compression algorithms (Brotli, Deflate, GZIP, LZ4, Snappy, XZ, Zstd) and Accept-Encoding negotiation, byte for byte as PHP's extensions.
@@ -13,7 +10,7 @@ This library is maintained by the [Appwrite team](https://appwrite.io).
 
 ```toml
 [dependencies]
-utopia-compression = { git = "https://github.com/utopia-rs/compression" }
+utopia-compression = { git = "https://github.com/appwrite/appwrite" }
 ```
 
 This library compresses and decompresses data with seven algorithms behind one `Algorithm` trait: Brotli, Deflate, Gzip, LZ4, Snappy, XZ and Zstd. It also picks the algorithm to answer an HTTP request with, from the client's `Accept-Encoding` header. The output matches what PHP's extensions write, so either runtime reads what the other wrote. This guide covers the common tasks.
@@ -66,6 +63,18 @@ let mut brotli = Brotli::new();
 assert_eq!(brotli.set_level(12), Err(Error::InvalidArgument("Level must be between 0 and 11".into())));
 ```
 
+## Write into your own buffer
+
+Each algorithm's `compress_into` and `decompress_into` append to a `Sink`: a `Vec<u8>`, or a buffer type of your own that implements it, so the output is written once, where it ends up. The PHP extension writes straight into the PHP string it returns this way.
+
+```rust
+use utopia_compression::{Algorithm, Zstd};
+
+let mut out = b"header:".to_vec();
+Zstd::new().compress_into(b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", &mut out)?;
+assert_eq!(Zstd::new().decompress(&out[7..])?, b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+```
+
 ## Handle data that is not compressed
 
 Decompressing data that is not a valid stream fails with `Error::Codec`, whose message is the warning PHP's extension emits. PHP returns an empty string in that case.
@@ -104,6 +113,42 @@ impl Algorithm for Reverse {
 assert_eq!(Reverse.content_encoding(), "reverse");
 assert_eq!(Reverse.decompress(&Reverse.compress(b"abc")?)?, b"abc");
 ```
+
+## Contributing
+
+Development happens in [appwrite/appwrite](https://github.com/appwrite/appwrite), where this crate lives at [`crates/utopia/compression`](https://github.com/appwrite/appwrite/tree/main/crates/utopia/compression). Run these commands from a checkout of it. The [contributing guide](https://utopia-docs.appwrite.network/contributing) covers each step.
+
+### Test
+
+```bash
+cargo test -p utopia-compression
+cargo clippy -p utopia-compression --all-targets -- -D warnings
+cargo fmt --all --check
+```
+
+### Compare with PHP
+
+Replay the results PHP recorded for every case against Rust, without PHP:
+
+```bash
+COMPAT_LIB=compression cargo test -p compat
+```
+
+Run every case on both runtimes, fuzz both with generated inputs, then run the whole conversion check. These need the dev stack (`docker compose up -d`):
+
+```bash
+bin/compat run compression
+bin/compat fuzz compression
+bin/compat check compression
+```
+
+### Benchmark
+
+```bash
+bin/compat bench compression
+```
+
+This times every benchmark on PHP and on a release build of Rust, both in containers on the dev stack. It fails if Rust is slower. Add `--write` to record the run in [`tests/compat/compression/bench.json`](https://github.com/appwrite/appwrite/blob/main/tests/compat/compression/bench.json). Run it on a quiet machine, one library at a time.
 
 ## License
 
